@@ -211,7 +211,7 @@
                 LENGTH: Approximately 200 words. Focus on the theme of "flourishing".`;
 
                 try {
-                    // Endpoint: Switched back to v1beta but using the standard model identifier
+                    // VERSION FIX: Using v1beta and explicit model path for Gemini 1.5 Flash
                     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${userApiKey}`;
                     
                     const response = await fetch(url, {
@@ -225,9 +225,8 @@
                     const data = await response.json();
                     
                     if (!response.ok) {
-                        // Detailed error handling for teachers
-                        const errorReason = data.error?.message || `HTTP ${response.status}`;
-                        throw new Error(errorReason);
+                        const errorMsg = data.error?.message || `Status: ${response.status}`;
+                        throw new Error(`${errorMsg} (URL: ${url})`);
                     }
 
                     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -235,12 +234,12 @@
                         setAiCommentary(text);
                         showToast("Report Synthesised!", "success");
                     } else {
-                        throw new Error("API returned no text content. Check safety filters or prompt.");
+                        throw new Error("The API responded successfully but returned no content. This usually happens if safety filters are triggered.");
                     }
 
                 } catch (e) {
                     console.error("AI Error:", e);
-                    setAiCommentary(`[SYNTHESIS ERROR]: ${e.message}\n\nTroubleshooting for Teachers:\n1. Verify your API Key is pasted correctly in Settings.\n2. In Google AI Studio, ensure you are not at your rate limit.\n3. The app is currently trying to use the 'Gemini 1.5 Flash' model via the v1beta endpoint.`);
+                    setAiCommentary(`[SYNTHESIS ERROR]: ${e.message}\n\nTroubleshooting:\n1. Ensure you have copied the correct API Key from Google AI Studio.\n2. Verify you are using 'Gemini 1.5 Flash' in your AI Studio tier.\n3. If you just updated the code on GitHub, wait 2 minutes and refresh (Shift+F5) to clear cache.`);
                     showToast("Synthesis failed", "error");
                 } finally {
                     setIsGenerating(false);
@@ -294,7 +293,7 @@
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Gemini API Key</label>
                                 <input type="password" value={userApiKey} onChange={(e) => setUserApiKey(e.target.value)} placeholder="Paste AI Key Here..." className="w-full border border-slate-200 rounded-xl p-3 text-sm mb-8" />
                                 <div className="flex gap-4">
-                                    <button onClick={() => { localStorage.setItem('tp_report_genius_key', userApiKey); setShowSettings(false); showToast("Settings Saved", "success"); }} className="flex-1 bg-emerald-950 text-white font-bold py-4 rounded-xl uppercase tracking-widest text-xs">Save</button>
+                                    <button onClick={() => { localStorage.setItem('tp_report_genius_key', userApiKey); setShowSettings(false); showToast("Settings Saved", "success"); }} className="flex-1 bg-emerald-950 text-white font-bold py-4 rounded-xl uppercase tracking-widest text-xs">Save Settings</button>
                                     <button onClick={() => setShowSettings(false)} className="px-6 text-slate-400 font-bold uppercase tracking-widest text-xs">Close</button>
                                 </div>
                             </div>
@@ -318,20 +317,6 @@
 
                     <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
                         <aside className="lg:col-span-4 space-y-6 no-print max-h-[85vh] overflow-y-auto pr-2 custom-scrollbar">
-                            {savedReports.length > 0 && (
-                                <div className="bg-emerald-50 p-6 rounded-[1.5rem] border border-emerald-100">
-                                    <h2 className="text-[10px] font-black text-emerald-800 uppercase mb-4 tracking-[0.2em] flex items-center gap-2"><Icon name="cloud" size={12}/> Cloud Library</h2>
-                                    <div className="space-y-2">
-                                        {savedReports.map(r => (
-                                            <div key={r.id} onClick={() => loadReport(r)} className="flex items-center justify-between bg-white p-3 rounded-xl border border-emerald-100 shadow-sm hover:shadow-md transition cursor-pointer">
-                                                <span className="text-xs font-black text-emerald-950 uppercase">{r.profile.name}</span>
-                                                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Y{r.profile.yearGroup}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
                             <div className="bg-white p-6 rounded-[1.5rem] border border-slate-200 shadow-sm">
                                 <h2 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-[0.2em] flex items-center gap-2"><Icon name="user" size={12}/> Pupil Identity</h2>
                                 <div className="space-y-4">

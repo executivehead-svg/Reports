@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Report Genius | Universal Embed</title>
+    <title>Report Genius Pro | Taddington & Priestcliffe</title>
     
     <!-- Libraries -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -14,11 +14,17 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
+    <!-- Firebase SDKs (Compat versions) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Playfair+Display:ital,wght@1,700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=Playfair+Display:ital,wght@1,700;1,900&display=swap');
         
-        body { background-color: #f8fafc; margin: 0; padding: 0; overflow-x: hidden; }
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        body { background-color: #f8fafc; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #10b981; border-radius: 10px; }
         
         @media print {
@@ -26,27 +32,30 @@
             #reportCard { box-shadow: none !important; border: none !important; border-radius: 0 !important; width: 100% !important; margin: 0 !important; }
         }
 
-        [contenteditable="true"]:focus { outline: none; background: #f0fdf4; border-radius: 8px; padding: 4px; }
+        .report-shadow { box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.08); }
+        [contenteditable="true"]:focus { outline: none; background: rgba(16, 185, 129, 0.05); border-radius: 8px; }
+        
+        input::placeholder { color: #cbd5e1; font-weight: 400; }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
+        const { useState, useEffect, useRef, useMemo } = React;
 
         // --- Data Constants ---
         const A2L_PATHWAY = {
-            10: { phase: "Mastered", behaviour: "Exemplary", engagement: "Dynamic", responsibility: "Precision", feedback: "Analytical", independence: "Self-Governing" },
-            9: { phase: "Mastered", behaviour: "Role Model", engagement: "Highly Skilled", responsibility: "Elite Standard", feedback: "Reflective Expert", independence: "Proactive" },
-            8: { phase: "Mastery", behaviour: "Active", engagement: "Articulate", responsibility: "Diligent", feedback: "Responsive", independence: "Motivated" },
-            7: { phase: "Mastery", behaviour: "Consistent", engagement: "Contributor", responsibility: "Organised", feedback: "Self-Aware", independence: "Reliable" },
-            6: { phase: "Developing", behaviour: "Enthusiastic", engagement: "Developing Focus", responsibility: "Developing", feedback: "Self-Reflective", independence: "Managing Time" },
-            5: { phase: "Developing", behaviour: "Focused", engagement: "Collaborative", responsibility: "Improving", feedback: "Guided", independence: "Beginning" },
-            4: { phase: "Developing", behaviour: "Regulated", engagement: "Consistently Fluent", responsibility: "Confident", feedback: "Critical Thinker", independence: "Resilient" },
-            3: { phase: "Building", behaviour: "Cooperative", engagement: "Participant", responsibility: "Sufficient", feedback: "Inquisitive", independence: "Active" },
-            2: { phase: "Building", behaviour: "Building", engagement: "Responsive", responsibility: "Motor Focused", feedback: "Clarifying", independence: "Emerging" },
-            1: { phase: "Building", behaviour: "Initial", engagement: "Attentive", responsibility: "Supported", feedback: "Interactive", independence: "Safe" }
+            10: { phase: "Mastered", behaviour: "Exemplary" },
+            9: { phase: "Mastered", behaviour: "Role Model" },
+            8: { phase: "Mastery", behaviour: "Active" },
+            7: { phase: "Mastery", behaviour: "Consistent" },
+            6: { phase: "Developing", behaviour: "Enthusiastic" },
+            5: { phase: "Developing", behaviour: "Focused" },
+            4: { phase: "Developing", behaviour: "Regulated" },
+            3: { phase: "Building", behaviour: "Cooperative" },
+            2: { phase: "Building", behaviour: "Building" },
+            1: { phase: "Building", behaviour: "Initial" }
         };
 
         const CLIC_PROGRESSION = [
@@ -62,115 +71,163 @@
             { range: [19, 20], summary: "Rapid calculation; complex multi-step problem solving; KS3 preparation." }
         ];
 
-        const TARGET_A2L = { "Nursery": 1, "Reception": 4, "1": 5, "2": 6, "3": 7, "4": 8, "5": 9, "6": 10 };
-        const TARGET_CLIC = { "Nursery": 1, "Reception": 2, "1": 4, "2": 8, "3": 10, "4": 14, "5": 17, "6": 20 };
-
         const SUBJECT_LISTS = {
             KS1: [
-                { id: 're', name: 'RE (KS1)', levels: ['Jesus/Muhammad.', 'God as creator.', 'Easter story.'] },
-                { id: 'science', name: 'Science (KS1)', levels: ['Common animals.', 'Deciduous/evergreen.', 'Weather patterns.'] },
-                { id: 'history', name: 'History (KS1)', levels: ['Past vs Now.', 'Armstrong.', 'Compares people.'] },
-                { id: 'geography', name: 'Geography (KS1)', levels: ['UK map.', 'Continents/Oceans.', 'Directions.'] },
-                { id: 'art', name: 'Art (KS1)', levels: ['Marks/dots.', 'Color mixing.', 'Textures.'] },
-                { id: 'computing', name: 'Computing (KS1)', levels: ['Turn on.', 'Groups data.', 'Scratch Jr.'] },
-                { id: 'music', name: 'Music (KS1)', levels: ['Claps rhythm.', 'Instruments.', 'Tempo.'] },
-                { id: 'pe', name: 'PE (KS1)', levels: ['Run/jump/throw.', 'Follows rules.', 'Receiving.'] },
-                { id: 'pshe', name: 'PSHE (KS1)', levels: ['Happy/sad.', 'Let Love In.', 'Trying again.'] }
+                { id: 're', name: 'RE' }, { id: 'science_f', name: 'Science' }, { id: 'history', name: 'History' }, 
+                { id: 'geography', name: 'Geography' }, { id: 'art', name: 'Art' }, { id: 'computing', name: 'Computing' },
+                { id: 'music', name: 'Music' }, { id: 'pe', name: 'PE' }, { id: 'pshe', name: 'PSHE' }
             ],
             LKS2: [
-                { id: 're', name: 'RE (LKS2)', levels: ['Festivals/stories.', 'God in Hinduism.', 'Identity.'] },
-                { id: 'science', name: 'Science (Y3)', levels: ['Rocks/plants.', 'Groups rocks.', 'Fair tests.'] },
-                { id: 'history', name: 'History (Y3/4)', levels: ['Timeline.', 'Nomadic shift.', 'Iron Age.'] },
-                { id: 'geography', name: 'Geography (Y3)', levels: ['UK counties.', '4-figure grid.', 'Rivers.'] },
-                { id: 'art', name: 'Art', levels: ['Lines.', 'Color theory.', 'Critiquing.'] },
-                { id: 'computing', name: 'Computing', levels: ['Logs on.', 'Branching DB.', 'Debugs.'] },
-                { id: 'music', name: 'Music (Y3)', levels: ['Glockenspiel.', 'Mood ID.', 'Melody.'] },
-                { id: 'pe', name: 'PE (LKS2)', levels: ['Moves safely.', 'Tennis control.', 'Passes.'] },
-                { id: 'pshe', name: 'PSHE', levels: ['Words hurt.', 'Selfie concept.', 'Resilience.'] }
+                { id: 're', name: 'RE' }, { id: 'science_f', name: 'Science' }, { id: 'history', name: 'History' }, 
+                { id: 'geography', name: 'Geography' }, { id: 'art', name: 'Art' }, { id: 'computing', name: 'Computing' },
+                { id: 'music', name: 'Music' }, { id: 'pe', name: 'PE' }, { id: 'pshe', name: 'PSHE' }
             ],
             UKS2: [
-                { id: 're', name: 'RE (UKS2)', levels: ['Retells stories.', 'Impact of beliefs.', 'Fall.'] },
-                { id: 'science', name: 'Science (Y6)', levels: ['Labels diagrams.', 'Heart functions.', 'Variables.'] },
-                { id: 'history', name: 'History (Y6)', levels: ['Key names.', 'Uses evidence.', 'Analyses cause.'] },
-                { id: 'geography', name: 'Geography (Y6)', levels: ['Locates regions.', '6-figure grid.'] },
-                { id: 'art', name: 'Art & Design', levels: ['Media control.', 'Layering.', 'Chiaroscuro.'] },
-                { id: 'dt', name: 'DT (Y6 Units)', levels: ['Design brief.', 'Moving parts.', 'Refines.'] },
-                { id: 'computing', name: 'Computing', levels: ['Software.', 'Loops/logic.', 'Refactors.'] },
-                { id: 'music', name: 'Music (Y6/Y5)', levels: ['Maintains pulse.', 'Melodic phrases.'] },
-                { id: 'pe', name: 'PE (Y6)', levels: ['Performs skills.', 'Applies rules.', 'Tactics.'] },
-                { id: 'pshe', name: 'PSHE', levels: ['Identifies emotions.', 'Recognises strengths.', 'Resolves.'] }
+                { id: 're', name: 'RE' }, { id: 'science_f', name: 'Science' }, { id: 'history', name: 'History' }, 
+                { id: 'geography', name: 'Geography' }, { id: 'art', name: 'Art & Design' }, { id: 'dt', name: 'DT' },
+                { id: 'computing', name: 'Computing' }, { id: 'music', name: 'Music' }, { id: 'pe', name: 'PE' }, { id: 'pshe', name: 'PSHE' }
             ]
+        };
+
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'report-genius-v1';
+
+        // --- Components ---
+        const Icon = ({ name, size = 18, className = "" }) => {
+            useEffect(() => { if (window.lucide) window.lucide.createIcons(); }, [name]);
+            return <i data-lucide={name} style={{ width: size, height: size }} className={`inline-block align-middle ${className}`}></i>;
         };
 
         const GradeBadge = ({ grade }) => {
             const styles = {
-                'Greater Depth': 'bg-emerald-100 text-emerald-800 border-emerald-200',
-                'Expected': 'bg-emerald-50 text-emerald-900 border-emerald-100',
-                'Working Towards': 'bg-amber-50 text-amber-700 border-amber-100'
+                'Greater Depth': 'bg-emerald-600 text-white border-emerald-700',
+                'Expected': 'bg-emerald-100 text-emerald-800 border-emerald-200',
+                'Working Towards': 'bg-amber-100 text-amber-800 border-amber-200'
             };
             return (
-                <span className={`inline-block px-3 py-1 rounded-full text-[9px] font-black border ${styles[grade] || ''}`}>
+                <span className={`inline-block px-3 py-1 rounded-full text-[10px] font-black border uppercase tracking-wider ${styles[grade] || ''}`}>
                     {grade}
                 </span>
             );
         };
 
-        const Icon = ({ name, ...props }) => {
-            return <div dangerouslySetInnerHTML={{ __html: lucide.icons[name]?.toSvg(props) }} style={{display: 'inline-flex'}} />;
-        };
-
         function App() {
+            const [user, setUser] = useState(null);
+            const [db, setDb] = useState(null);
             const [profile, setProfile] = useState({
                 name: '', yearGroup: '6', attendance: 100, ageYears: 11, ageMonths: 0,
                 readingAge: '', clicScore: 0, satsReading: '', satsGps: '', satsMaths: '',
                 nferReading: '', nferMaths: ''
             });
-
-            const [judgments, setJudgments] = useState({
-                reading: 'Expected', writing: 'Expected', maths: 'Expected', science: 'Expected'
-            });
-
-            const [a2lLevel, setA2lLevel] = useState(10);
+            const [judgments, setJudgments] = useState({ reading: 'Expected', writing: 'Expected', maths: 'Expected', science: 'Expected' });
+            const [a2lLevel, setA2lLevel] = useState(8);
             const [rubricState, setRubricState] = useState({});
             const [aiCommentary, setAiCommentary] = useState('');
-            const [errorMsg, setErrorMsg] = useState('');
             const [isGenerating, setIsGenerating] = useState(false);
-            const [toast, setToast] = useState({ show: false, message: '' });
             const [showSettings, setShowSettings] = useState(false);
             const [userApiKey, setUserApiKey] = useState('');
-            
+            const [savedReports, setSavedReports] = useState([]);
+            const [toast, setToast] = useState({ show: false, message: '', type: 'info' });
+            const [isSaving, setIsSaving] = useState(false);
+
             const reportRef = useRef(null);
 
             useEffect(() => {
-                const savedKey = localStorage.getItem('tp_report_genius_key');
-                if (savedKey) setUserApiKey(savedKey);
+                if (!firebaseConfig.apiKey || !window.firebase) return;
+                const fbApp = firebase.initializeApp(firebaseConfig);
+                const firestore = fbApp.firestore();
+                const firebaseAuth = fbApp.auth();
+                setDb(firestore);
+                firebaseAuth.onAuthStateChanged((u) => {
+                    setUser(u);
+                    if (u) {
+                        const savedKey = localStorage.getItem('tp_report_genius_key');
+                        if (savedKey) setUserApiKey(savedKey);
+                        const initAuth = async () => {
+                            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await firebaseAuth.signInWithCustomToken(__initial_auth_token);
+                            else await firebaseAuth.signInAnonymously();
+                        };
+                        initAuth();
+                    }
+                });
             }, []);
 
-            const saveSettings = () => {
-                localStorage.setItem('tp_report_genius_key', userApiKey);
-                setShowSettings(false);
-                showToast("API Key saved.");
+            useEffect(() => {
+                if (!user || !db) return;
+                const path = `artifacts/${appId}/users/${user.uid}/reports`;
+                return db.collection(path).onSnapshot(s => setSavedReports(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+            }, [user, db]);
+
+            const showToast = (message, type = 'info') => {
+                setToast({ show: true, message, type });
+                setTimeout(() => setToast({ show: false, message: '', type: 'info' }), 3000);
             };
 
-            const showToast = (msg) => {
-                setToast({ show: true, message: msg });
-                setTimeout(() => setToast({ show: false, message: '' }), 3000);
+            const saveToCloud = async () => {
+                if (!user || !db || !profile.name) return showToast(profile.name ? "Saving..." : "Pupil Name required", "error");
+                setIsSaving(true);
+                try {
+                    const docId = profile.name.replace(/\s+/g, '-').toLowerCase();
+                    await db.collection(`artifacts/${appId}/users/${user.uid}/reports`).doc(docId).set({ profile, judgments, a2lLevel, rubricState, aiCommentary, updatedAt: Date.now() });
+                    showToast("Cloud sync complete!", "success");
+                } catch (e) { showToast("Save failed", "error"); }
+                setIsSaving(false);
             };
 
-            const handleProfileChange = (e) => {
-                const { id, value } = e.target;
-                setProfile(prev => ({ ...prev, [id]: value }));
+            const loadReport = (r) => { setProfile(r.profile); setJudgments(r.judgments); setA2lLevel(r.a2lLevel); setRubricState(r.rubricState || {}); setAiCommentary(r.aiCommentary); showToast(`Loaded: ${r.profile.name}`); };
+
+            const generateAICommentary = async () => {
+                if (!profile.name) return showToast("Pupil Name required", "error");
+                setIsGenerating(true);
+                const activeSubs = getActiveSubjects();
+                const formattedRubric = activeSubs.filter(s => rubricState[s.id] !== undefined).map(s => `${s.name}: ${['Emerging', 'Developing', 'Secure'][rubricState[s.id]]}`).join(', ');
+                const prompt = `Teacher report for ${profile.name}, Year ${profile.yearGroup}. A2L: ${a2lLevel}. Core: R:${judgments.reading}, W:${judgments.writing}, M:${judgments.maths}. Foundation: ${formattedRubric}. Flourishing-themed summative report, 200 words.`;
+                try {
+                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${userApiKey}`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                    });
+                    const data = await res.json();
+                    setAiCommentary(data.candidates?.[0]?.content?.parts?.[0]?.text || "Synthesis error.");
+                } catch (e) { showToast("AI Failed", "error"); }
+                setIsGenerating(false);
             };
 
-            const handleYearChange = (e) => {
-                const yr = e.target.value;
-                setProfile(prev => ({ ...prev, yearGroup: yr }));
-                setA2lLevel(TARGET_A2L[yr] || 10);
-                setRubricState({}); 
-            };
+            const downloadAsPDF = async () => {
+                if (!reportRef.current) return;
+                showToast("Building Borderless PDF...");
+                
+                try {
+                    // Capture the report card element
+                    const canvas = await html2canvas(reportRef.current, { 
+                        scale: 2, 
+                        useCORS: true, 
+                        backgroundColor: '#ffffff',
+                        logging: false
+                    });
+                    
+                    const imgData = canvas.toDataURL('image/png');
+                    
+                    // Standard A4 width in mm
+                    const pdfWidthMM = 210; 
+                    // Calculate relative height in mm to maintain aspect ratio exactly
+                    const pdfHeightMM = (canvas.height * pdfWidthMM) / canvas.width; 
+                    
+                    // Create PDF with exactly matching dimensions for borderless look
+                    const pdf = new jspdf.jsPDF({
+                        orientation: 'p',
+                        unit: 'mm',
+                        format: [pdfWidthMM, pdfHeightMM],
+                        compress: true
+                    });
 
-            const setRubric = (subId, level) => {
-                setRubricState(prev => ({ ...prev, [subId]: level }));
+                    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidthMM, pdfHeightMM, undefined, 'FAST');
+                    pdf.save(`${profile.name || 'Student'}_Report_Borderless.pdf`);
+                    showToast("Export complete!", "success");
+                } catch (err) {
+                    console.error("PDF generation error:", err);
+                    showToast("Export failed", "error");
+                }
             };
 
             const getActiveSubjects = () => {
@@ -181,233 +238,128 @@
             };
 
             const getAttendanceComment = (val) => {
-                if (val >= 100) return "100%: Outstanding. This pupil has the best chance of academic and social success.";
-                if (val >= 97) return "97%: Strong attendance. Only 5 days missed this year.";
-                if (val >= 95) return "95%: Good attendance. Close to 10 days missed; every day counts.";
-                if (val >= 90) return "90%: Persistent Absence. Approx 20 days missed (4 school weeks).";
+                if (val >= 100) return "100%: Outstanding. This pupil maximizes every opportunity for academic and social success.";
+                if (val >= 97) return "97%: Strong attendance. Consistent presence supports steady progress.";
+                if (val >= 95) return "95%: Good attendance. Every day counts towards flourishing.";
+                if (val >= 90) return "90%: Persistent Absence. Approximately 4 school weeks missed; significant impact on learning.";
                 return "Significant learning time lost. Classified as Persistent Absence.";
             };
 
-            const generateAICommentary = async () => {
-                if (!profile.name) return showToast("Enter pupil name.");
-                if (!userApiKey) {
-                    setShowSettings(true);
-                    return showToast("API Key needed.");
-                }
-
-                setIsGenerating(true);
-                setErrorMsg('');
-                setAiCommentary('');
-
-                const activeSubjects = getActiveSubjects();
-                const formattedRubric = activeSubjects
-                    .filter(s => rubricState[s.id] !== undefined)
-                    .map(s => `${s.name}: ${['Emerging', 'Developing', 'Secure'][rubricState[s.id]]}`)
-                    .join(', ');
-
-                // UNIVERSAL METHOD: Put everything into the contents array parts to avoid version conflicts
-                const prompt = `
-                    You are a Primary Teacher at Taddington & Priestcliffe C of E Federation.
-                    MISSION: Flourishing together. VALUES: Respect, Resilience, Motivate, Aspire, Together, Imagine, Forgiveness.
-                    TONE: Professional, warm, British English, 3rd person.
-
-                    PUPIL DATA:
-                    Name: ${profile.name}
-                    Year: ${profile.yearGroup}
-                    A2L Level: ${a2lLevel} (Phase: ${A2L_PATHWAY[a2lLevel].phase})
-                    Judgments: Reading: ${judgments.reading}, Writing: ${judgments.writing}, Maths: ${judgments.maths}, Science: ${judgments.science}
-                    CLIC Score: ${profile.clicScore}
-                    Reading Age: ${profile.readingAge}
-                    Foundation Highlights: ${formattedRubric}
-
-                    TASK: Write a holistic summative report commentary (approx 180-220 words). Focus on flourishing and values.
-                `;
-
-                try {
-                    // UNIVERSAL ENDPOINT: v1beta is actually the most stable for generateContent with 1.5 Flash
-                    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${userApiKey}`;
-                    
-                    const response = await fetch(url, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            contents: [{ parts: [{ text: prompt }] }]
-                        })
-                    });
-                    
-                    const result = await response.json();
-                    
-                    if (!response.ok) {
-                        throw new Error(result.error?.message || 'Check your model selection and API key.');
-                    }
-                    
-                    const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-                    if (!text) throw new Error('AI returned no text. Check safety filters or key permissions.');
-                    
-                    setAiCommentary(text);
-                    showToast("Report Synthesised!");
-                } catch (err) {
-                    setErrorMsg(`ERROR: ${err.message}`);
-                    showToast("AI Generation Failed.");
-                } finally {
-                    setIsGenerating(false);
-                }
-            };
-
-            const downloadAsPDF = async () => {
-                if (!reportRef.current) return;
-                showToast("Generating Borderless PDF...");
-                const canvas = await html2canvas(reportRef.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
-                const imgData = canvas.toDataURL('image/png');
-                const pdfWidth = 210; 
-                const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-                const pdf = new jspdf.jsPDF({ orientation: 'p', unit: 'mm', format: [pdfWidth, pdfHeight] });
-                pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-                pdf.save(`${profile.name || 'Report'}.pdf`);
-            };
-
-            const currentClic = CLIC_PROGRESSION.find(p => profile.clicScore >= p.range[0] && profile.clicScore <= p.range[1]);
+            const currentClic = useMemo(() => CLIC_PROGRESSION.find(p => profile.clicScore >= p.range[0] && profile.clicScore <= p.range[1]), [profile.clicScore]);
 
             return (
-                <div className="max-w-7xl mx-auto p-4 md:p-8 font-sans selection:bg-emerald-100 min-h-screen">
-                    {/* Settings Modal */}
+                <div className="min-h-screen p-4 md:p-8 bg-[#f8fafc]">
+                    <div className={`fixed top-6 left-1/2 -translate-x-1/2 z-[100] px-6 py-3 rounded-2xl shadow-2xl transition-all ${toast.show ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'} ${toast.type === 'error' ? 'bg-red-600 text-white' : 'bg-emerald-900 text-white'}`}>
+                        <span className="font-bold text-sm tracking-wider">{toast.message}</span>
+                    </div>
+
                     {showSettings && (
                         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-                            <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl border border-slate-200">
-                                <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-emerald-900"><Icon name="settings" size={20} /> App Configuration</h2>
-                                <div className="space-y-4">
-                                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Google Gemini API Key</label>
-                                        <input 
-                                            type="password" 
-                                            value={userApiKey} 
-                                            onChange={(e) => setUserApiKey(e.target.value)} 
-                                            placeholder="Paste API Key Here..."
-                                            className="w-full border border-slate-200 rounded-lg p-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
-                                        />
-                                        <p className="mt-2 text-[9px] text-slate-400 italic">Key required for AI. Stored locally.</p>
-                                    </div>
-                                </div>
-                                <div className="flex gap-3 mt-8">
-                                    <button onClick={saveSettings} className="flex-1 bg-emerald-700 text-white font-bold py-3 rounded-xl hover:bg-emerald-800 transition shadow-lg">Save API Key</button>
-                                    <button onClick={() => setShowSettings(false)} className="px-6 py-3 text-slate-400 font-bold">Close</button>
+                            <div className="bg-white rounded-[2rem] p-8 max-w-md w-full shadow-2xl">
+                                <h2 className="text-xl font-black mb-6 uppercase tracking-tight">Configuration</h2>
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Gemini API Key</label>
+                                <input type="password" value={userApiKey} onChange={(e) => setUserApiKey(e.target.value)} placeholder="Paste Key Here..." className="w-full border border-slate-200 rounded-xl p-3 text-sm mb-8" />
+                                <div className="flex gap-4">
+                                    <button onClick={() => { localStorage.setItem('tp_report_genius_key', userApiKey); setShowSettings(false); }} className="flex-1 bg-emerald-950 text-white font-bold py-4 rounded-xl uppercase tracking-widest text-xs">Save</button>
+                                    <button onClick={() => setShowSettings(false)} className="px-6 text-slate-400 font-bold uppercase tracking-widest text-xs">Cancel</button>
                                 </div>
                             </div>
                         </div>
                     )}
 
-                    <header className="mb-8 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 no-print">
-                        <div className="flex items-center gap-3">
-                            <div className="bg-emerald-600 p-2 rounded-xl text-white shadow-lg">
-                                <Icon name="graduation-cap" size={32} />
-                            </div>
+                    <header className="max-w-7xl mx-auto mb-10 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 no-print">
+                        <div className="flex items-center gap-4">
+                            <div className="bg-emerald-950 p-3 rounded-2xl text-white shadow-xl"><Icon name="graduation-cap" size={36} /></div>
                             <div>
-                                <h1 className="text-3xl font-bold text-emerald-900 tracking-tight">Report Genius</h1>
-                                <p className="text-slate-500 text-sm font-medium">Taddington & Priestcliffe Federation</p>
+                                <h1 className="text-3xl font-black text-emerald-950 uppercase tracking-tight">Report Genius <span className="text-emerald-600 font-serif lowercase italic">pro</span></h1>
+                                <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Taddington & Priestcliffe Federation</p>
                             </div>
                         </div>
-                        <div className="flex flex-wrap gap-2 w-full xl:w-auto">
-                            <button onClick={() => setShowSettings(true)} className={`px-4 py-2 rounded-lg flex items-center justify-center gap-2 border transition ${userApiKey ? 'bg-white border-emerald-200 text-emerald-700 hover:bg-emerald-50 shadow-sm' : 'bg-red-50 border-red-200 text-red-600 animate-pulse'}`}>
-                                <Icon name="key" size={18} /> {userApiKey ? 'Update Key' : 'Enter API Key'}
-                            </button>
-                            <button onClick={downloadAsPDF} className="bg-emerald-700 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2 hover:bg-emerald-800 transition shadow-md">
-                                <Icon name="file-text" size={18} /> Borderless PDF
-                            </button>
+                        <div className="flex flex-wrap gap-2">
+                            <button onClick={() => setShowSettings(true)} className="px-4 py-2 bg-white border border-slate-200 rounded-lg flex items-center gap-2 font-black text-[10px] uppercase tracking-widest"><Icon name="settings" size={14}/> Settings</button>
+                            <button onClick={saveToCloud} className="px-4 py-2 bg-white border border-slate-200 rounded-lg flex items-center gap-2 font-black text-[10px] uppercase tracking-widest text-emerald-700"><Icon name="save" size={14}/> Cloud</button>
+                            <button onClick={downloadAsPDF} className="bg-emerald-950 text-white px-5 py-2 rounded-lg flex items-center gap-2 font-black text-[10px] uppercase tracking-widest shadow-lg hover:bg-black transition"><Icon name="download" size={14}/> Export PDF</button>
                         </div>
                     </header>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                        {/* SIDEBAR INPUTS */}
-                        <aside className="lg:col-span-4 space-y-6 no-print">
-                            {/* Profile */}
-                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                                <h2 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-widest flex items-center gap-2">
-                                    <Icon name="user" size={14} /> Pupil Profile
-                                </h2>
-                                <div className="space-y-3">
-                                    <input type="text" id="name" value={profile.name} onChange={handleProfileChange} placeholder="Pupil Full Name" className="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-500" />
+                    <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                        {/* INPUT PANEL */}
+                        <aside className="lg:col-span-4 space-y-6 no-print max-h-[85vh] overflow-y-auto pr-2 custom-scrollbar">
+                            
+                            {/* Section 1: Identity */}
+                            <div className="bg-white p-6 rounded-[1.5rem] border border-slate-200 shadow-sm">
+                                <h2 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-[0.2em] flex items-center gap-2"><Icon name="user" size={12}/> Pupil Identity</h2>
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1 block">Pupil Full Name</label>
+                                        <input type="text" value={profile.name} onChange={(e) => setProfile(p => ({...p, name: e.target.value}))} placeholder="e.g. John Smith" className="w-full border border-slate-100 bg-slate-50 rounded-xl p-3 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-500" />
+                                    </div>
                                     <div className="grid grid-cols-2 gap-4">
-                                        <select value={profile.yearGroup} onChange={handleYearChange} className="w-full border border-slate-200 rounded-lg p-2.5 text-sm bg-white">
-                                            {['Nursery', 'Reception', '1', '2', '3', '4', '5', '6'].map(y => <option key={y} value={y}>Year {y}</option>)}
-                                        </select>
-                                        <div className="relative">
-                                            <input type="number" id="attendance" value={profile.attendance} onChange={handleProfileChange} placeholder="Att %" className="w-full border border-slate-200 rounded-lg p-2.5 text-sm pr-6" />
-                                            <span className="absolute right-2 top-2.5 text-[10px] text-slate-400">%</span>
+                                        <div>
+                                            <label className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1 block">Year Group</label>
+                                            <select value={profile.yearGroup} onChange={(e) => setProfile(p => ({...p, yearGroup: e.target.value}))} className="w-full border border-slate-100 bg-slate-50 rounded-xl p-3 text-sm font-bold">
+                                                {['Nursery', 'Reception', '1', '2', '3', '4', '5', '6'].map(y => <option key={y} value={y}>Year {y}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1 block">Attendance %</label>
+                                            <input type="number" value={profile.attendance} onChange={(e) => setProfile(p => ({...p, attendance: e.target.value}))} className="w-full border border-slate-100 bg-slate-50 rounded-xl p-3 text-sm font-bold" />
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Academic Data */}
-                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                                <h2 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-widest flex items-center gap-2">
-                                    <Icon name="calculator" size={14} /> Academic Data
-                                </h2>
+                            {/* Section 2: Core Data */}
+                            <div className="bg-white p-6 rounded-[1.5rem] border border-slate-200 shadow-sm">
+                                <h2 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-[0.2em] flex items-center gap-2"><Icon name="calculator" size={12}/> Benchmarks</h2>
                                 <div className="space-y-4">
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
-                                            <label className="text-[9px] font-bold text-slate-500 uppercase block mb-1">Reading Age</label>
-                                            <input type="text" id="readingAge" value={profile.readingAge} onChange={handleProfileChange} placeholder="e.g. 11.08" className="w-full border border-slate-200 rounded-lg p-2 text-xs focus:ring-1 focus:ring-emerald-500" />
+                                            <label className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1 block">Reading Age</label>
+                                            <input type="text" value={profile.readingAge} onChange={(e) => setProfile(p => ({...p, readingAge: e.target.value}))} placeholder="e.g. 10.05" className="w-full border border-slate-100 bg-slate-50 rounded-xl p-3 text-sm font-bold" />
                                         </div>
                                         <div>
-                                            <label className="text-[9px] font-bold text-slate-500 uppercase block mb-1">CLIC Score</label>
-                                            <input type="number" id="clicScore" value={profile.clicScore} onChange={handleProfileChange} className="w-full border border-slate-200 rounded-lg p-2 text-xs" />
+                                            <label className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1 block">CLIC Score</label>
+                                            <input type="number" value={profile.clicScore} onChange={(e) => setProfile(p => ({...p, clicScore: e.target.value}))} className="w-full border border-slate-100 bg-slate-50 rounded-xl p-3 text-sm font-bold" />
                                         </div>
                                     </div>
 
+                                    {/* Standardised Logic */}
                                     {profile.yearGroup === '6' ? (
-                                        <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-100 shadow-inner">
-                                            <p className="text-[9px] font-black text-emerald-800 uppercase mb-2">SATs Scores</p>
+                                        <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
+                                            <label className="text-[8px] font-black text-emerald-800 uppercase tracking-widest mb-3 block">Year 6 SATs Scores</label>
                                             <div className="grid grid-cols-3 gap-2">
-                                                <input type="number" id="satsReading" value={profile.satsReading} onChange={handleProfileChange} placeholder="R" className="w-full p-1.5 text-xs border border-emerald-200 rounded bg-white outline-none" />
-                                                <input type="number" id="satsGps" value={profile.satsGps} onChange={handleProfileChange} placeholder="GPS" className="w-full p-1.5 text-xs border border-emerald-200 rounded bg-white outline-none" />
-                                                <input type="number" id="satsMaths" value={profile.satsMaths} onChange={handleProfileChange} placeholder="M" className="w-full p-1.5 text-xs border border-emerald-200 rounded bg-white outline-none" />
+                                                <input type="number" placeholder="Read" value={profile.satsReading} onChange={(e) => setProfile(p => ({...p, satsReading: e.target.value}))} className="p-2 text-xs border border-emerald-100 rounded bg-white font-bold text-center" />
+                                                <input type="number" placeholder="GPS" value={profile.satsGps} onChange={(e) => setProfile(p => ({...p, satsGps: e.target.value}))} className="p-2 text-xs border border-emerald-100 rounded bg-white font-bold text-center" />
+                                                <input type="number" placeholder="Math" value={profile.satsMaths} onChange={(e) => setProfile(p => ({...p, satsMaths: e.target.value}))} className="p-2 text-xs border border-emerald-100 rounded bg-white font-bold text-center" />
                                             </div>
                                         </div>
-                                    ) : ['2','3','4','5'].includes(profile.yearGroup) && (
-                                        <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 shadow-inner">
-                                            <p className="text-[9px] font-black text-slate-600 uppercase mb-2">NFER Standardised</p>
+                                    ) : ['2','3','4','5'].includes(profile.yearGroup) ? (
+                                        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
+                                            <label className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-3 block">NFER Standardised Scores</label>
                                             <div className="grid grid-cols-2 gap-2">
-                                                <input type="number" id="nferReading" value={profile.nferReading} onChange={handleProfileChange} placeholder="Read" className="w-full p-1.5 text-xs border border-slate-300 rounded bg-white" />
-                                                <input type="number" id="nferMaths" value={profile.nferMaths} onChange={handleProfileChange} placeholder="Math" className="w-full p-1.5 text-xs border border-slate-300 rounded bg-white" />
+                                                <div className="text-center">
+                                                    <label className="text-[7px] text-slate-400 font-bold uppercase mb-1 block">Reading</label>
+                                                    <input type="number" placeholder="Std" value={profile.nferReading} onChange={(e) => setProfile(p => ({...p, nferReading: e.target.value}))} className="w-full p-2 text-xs border border-slate-200 rounded bg-white font-bold text-center" />
+                                                </div>
+                                                <div className="text-center">
+                                                    <label className="text-[7px] text-slate-400 font-bold uppercase mb-1 block">Maths</label>
+                                                    <input type="number" placeholder="Std" value={profile.nferMaths} onChange={(e) => setProfile(p => ({...p, nferMaths: e.target.value}))} className="w-full p-2 text-xs border border-slate-200 rounded bg-white font-bold text-center" />
+                                                </div>
                                             </div>
                                         </div>
-                                    )}
+                                    ) : null}
                                 </div>
                             </div>
 
-                            {/* A2L Achievement */}
-                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                                <h2 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-widest flex items-center gap-2">
-                                    <Icon name="trending-up" size={14} /> Attitude (A2L)
-                                </h2>
-                                <div className="grid grid-cols-5 gap-2">
-                                    {[1,2,3,4,5,6,7,8,9,10].map(i => (
-                                        <button 
-                                            key={i} 
-                                            onClick={() => setA2lLevel(i)}
-                                            className={`p-2 text-xs font-bold rounded border transition ${a2lLevel === i ? 'bg-emerald-700 text-white border-emerald-700 shadow-md scale-105' : 'bg-white text-slate-400 hover:border-emerald-200'}`}
-                                        >
-                                            {i}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* Teacher Judgments */}
-                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                                <h2 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-widest flex items-center gap-2">
-                                    <Icon name="award" size={14} /> Core Judgments
-                                </h2>
-                                <div className="space-y-3">
-                                    {['reading', 'writing', 'maths', 'science'].map(sub => (
-                                        <div key={sub} className="flex items-center justify-between gap-4">
-                                            <label className="text-[10px] font-black text-slate-500 uppercase">{sub}</label>
-                                            <select 
-                                                value={judgments[sub]} 
-                                                onChange={(e) => setJudgments(prev => ({ ...prev, [sub]: e.target.value }))}
-                                                className="border border-slate-200 rounded-lg p-1.5 text-xs bg-slate-50 outline-none"
-                                            >
+                            {/* Section 3: Core Judgments */}
+                            <div className="bg-white p-6 rounded-[1.5rem] border border-slate-200 shadow-sm">
+                                <h2 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-[0.2em] flex items-center gap-2"><Icon name="award" size={12}/> Core Teacher Judgments</h2>
+                                <div className="space-y-2">
+                                    {['Reading', 'Writing', 'Maths', 'Science'].map(s => (
+                                        <div key={s} className="flex items-center justify-between p-2 rounded-lg bg-slate-50">
+                                            <span className="text-[9px] font-black text-slate-600 uppercase ml-2">{s}</span>
+                                            <select value={judgments[s.toLowerCase()]} onChange={(e) => setJudgments(v => ({...v, [s.toLowerCase()]: e.target.value}))} className="bg-transparent border-none text-[9px] font-black text-emerald-800 uppercase outline-none">
                                                 <option>Working Towards</option>
                                                 <option>Expected</option>
                                                 <option>Greater Depth</option>
@@ -417,21 +369,19 @@
                                 </div>
                             </div>
 
-                            {/* Foundation Rubric */}
-                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                                <h2 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-widest flex items-center gap-2">
-                                    <Icon name="list-checks" size={14} /> Foundation Rubric
-                                </h2>
-                                <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                            {/* Section 4: Foundation Subjects */}
+                            <div className="bg-white p-6 rounded-[1.5rem] border border-slate-200 shadow-sm">
+                                <h2 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-[0.2em] flex items-center gap-2"><Icon name="list" size={12}/> Foundation Curriculum</h2>
+                                <div className="space-y-3">
                                     {getActiveSubjects().map(sub => (
-                                        <div key={sub.id} className="p-3 rounded-xl border border-slate-100 bg-slate-50/50">
-                                            <label className="block text-[10px] font-black text-slate-600 uppercase mb-2 tracking-tight">{sub.name}</label>
-                                            <div className="flex flex-col gap-1.5">
+                                        <div key={sub.id} className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                                            <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-2">{sub.name}</p>
+                                            <div className="flex gap-1">
                                                 {['Emerging', 'Developing', 'Secure'].map((lvl, idx) => (
                                                     <button 
                                                         key={lvl} 
-                                                        onClick={() => setRubric(sub.id, idx)}
-                                                        className={`text-[9px] text-left p-1.5 border rounded transition leading-tight ${rubricState[sub.id] === idx ? 'bg-emerald-100 border-emerald-500 text-emerald-900 font-bold' : 'bg-white text-slate-500 hover:border-emerald-200'}`}
+                                                        onClick={() => setRubricState(prev => ({ ...prev, [sub.id]: idx }))}
+                                                        className={`flex-1 py-1 text-[8px] font-black rounded border transition uppercase tracking-tighter ${rubricState[sub.id] === idx ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-white text-slate-400 border-slate-200 hover:border-emerald-300'}`}
                                                     >
                                                         {lvl}
                                                     </button>
@@ -442,80 +392,81 @@
                                 </div>
                             </div>
 
-                            <button 
-                                disabled={isGenerating}
-                                onClick={generateAICommentary} 
-                                className="w-full bg-emerald-700 text-white font-bold py-4 rounded-xl shadow-lg hover:bg-emerald-800 transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed group"
-                            >
-                                <Icon name="sparkles" size={18} className={isGenerating ? "animate-spin" : "group-hover:animate-pulse"} /> 
-                                {isGenerating ? "Synthesising..." : "Generate Commentary"}
+                            {/* Section 5: A2L */}
+                            <div className="bg-white p-6 rounded-[1.5rem] border border-slate-200 shadow-sm">
+                                <h2 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-[0.2em] flex items-center gap-2"><Icon name="trending-up" size={12}/> A2L Engagement</h2>
+                                <div className="grid grid-cols-5 gap-1.5">
+                                    {[1,2,3,4,5,6,7,8,9,10].map(i => (
+                                        <button key={i} onClick={() => setA2lLevel(i)} className={`p-2 text-[10px] font-black rounded-lg border transition ${a2lLevel === i ? 'bg-emerald-950 text-white border-emerald-950' : 'bg-slate-50 text-slate-300 border-slate-100 hover:border-emerald-200'}`}>{i}</button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <button onClick={generateAICommentary} disabled={isGenerating} className="w-full bg-emerald-950 text-white font-black py-5 rounded-[1.5rem] shadow-xl hover:bg-black transition flex items-center justify-center gap-3 disabled:opacity-50 uppercase tracking-[0.2em] text-[10px]">
+                                <Icon name="sparkles" size={16} className={isGenerating ? "animate-spin" : ""} /> {isGenerating ? "Synthesising..." : "Generate AI Report"}
                             </button>
                         </aside>
 
-                        {/* REPORT CARD PREVIEW */}
+                        {/* PREVIEW PANEL */}
                         <main className="lg:col-span-8">
-                            <div ref={reportRef} id="reportCard" className="bg-white rounded-[2rem] shadow-2xl border border-slate-200 overflow-hidden flex flex-col min-h-full">
-                                {/* Header */}
-                                <div className="bg-emerald-900 text-white p-10 flex flex-col md:flex-row justify-between items-start">
-                                    <div>
-                                        <h2 className="text-3xl font-serif italic tracking-wide font-black">Academic Achievement Report</h2>
-                                        <p className="text-emerald-200 text-xs mt-1 uppercase font-bold tracking-widest">Taddington & Priestcliffe C of E Federation</p>
-                                    </div>
-                                    <div className="text-left md:text-right mt-4 md:mt-0 uppercase">
-                                        <p className="font-bold text-2xl tracking-wider">{profile.name || 'Student Name'}</p>
-                                        <p className="text-emerald-300 text-sm font-black">Year {profile.yearGroup} • 2025/26</p>
+                            <div ref={reportRef} id="reportCard" className="bg-white rounded-[2rem] border border-slate-200 overflow-hidden min-h-full report-shadow flex flex-col">
+                                <div className="bg-emerald-950 text-white p-12 relative">
+                                    <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-800 rounded-full opacity-20 blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+                                    <div className="relative z-10 flex justify-between items-end">
+                                        <div>
+                                            <h2 className="text-4xl font-serif italic font-black leading-none">Assessment Summary</h2>
+                                            <p className="text-emerald-400 text-[9px] mt-3 uppercase font-black tracking-[0.3em]">Federation Flourishing Report</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <h3 className="text-3xl font-black uppercase tracking-tighter leading-none">{profile.name || 'PUPIL NAME'}</h3>
+                                            <div className="flex gap-2 justify-end mt-3">
+                                                <span className="bg-emerald-800 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest">Year {profile.yearGroup}</span>
+                                                <span className="bg-emerald-100 text-emerald-950 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest">2025/26</span>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
 
-                                <div className="p-8 space-y-8 flex-grow">
-                                    {/* Stats Tiles */}
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-center">
-                                            <p className="text-[9px] text-slate-400 uppercase font-black mb-1">A2L Grade</p>
-                                            <p className="text-2xl font-black text-emerald-900">L{a2lLevel}</p>
+                                <div className="p-12 space-y-12">
+                                    {/* Tiles */}
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                                        <div className="p-6 bg-slate-50 rounded-[1.5rem] text-center border border-slate-100">
+                                            <p className="text-[8px] text-slate-400 uppercase font-black tracking-widest mb-2">A2L Grade</p>
+                                            <p className="text-3xl font-black text-emerald-950 leading-none">L{a2lLevel}</p>
                                         </div>
-                                        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-center">
-                                            <p className="text-[9px] text-slate-400 uppercase font-black mb-1">Age vs Reading</p>
-                                            <p className="text-xl font-bold text-slate-800">{profile.ageYears}.{profile.ageMonths} <span className="text-slate-200 mx-1">|</span> {profile.readingAge || '-'}</p>
+                                        <div className="p-6 bg-slate-50 rounded-[1.5rem] text-center border border-slate-100">
+                                            <p className="text-[8px] text-slate-400 uppercase font-black tracking-widest mb-2">Reading Age</p>
+                                            <p className="text-3xl font-black text-slate-900 leading-none">{profile.readingAge || '-'}</p>
                                         </div>
-                                        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-center">
-                                            <p className="text-[9px] text-slate-400 uppercase font-black mb-1">CLIC Fluency</p>
-                                            <p className="text-2xl font-black text-emerald-900">{profile.clicScore || '-'}</p>
+                                        <div className="p-6 bg-slate-50 rounded-[1.5rem] text-center border border-slate-100">
+                                            <p className="text-[8px] text-slate-400 uppercase font-black tracking-widest mb-2">CLIC Milestones</p>
+                                            <p className="text-3xl font-black text-emerald-950 leading-none">{profile.clicScore || '0'}</p>
                                         </div>
-                                        <div className={`p-4 rounded-2xl border text-center ${profile.attendance >= 96 ? 'bg-emerald-50 border-emerald-100' : 'bg-amber-50 border-amber-100'}`}>
-                                            <p className="text-[9px] text-slate-400 uppercase font-black mb-1">Attendance</p>
-                                            <p className="text-2xl font-black text-emerald-900">{profile.attendance}%</p>
+                                        <div className={`p-6 rounded-[1.5rem] text-center border ${profile.attendance >= 96 ? 'bg-emerald-50 border-emerald-100' : 'bg-amber-50 border-amber-100'}`}>
+                                            <p className="text-[8px] text-slate-400 uppercase font-black tracking-widest mb-2">Attendance</p>
+                                            <p className="text-3xl font-black text-emerald-950 leading-none">{profile.attendance}%</p>
                                         </div>
-                                    </div>
-
-                                    {/* Attendance Statement */}
-                                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 italic text-[11px] text-slate-600">
-                                        <div className="flex items-center gap-2 mb-1 not-italic">
-                                            <Icon name="calendar-days" size={14} className="text-emerald-700" />
-                                            <h3 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Attendance Impact</h3>
-                                        </div>
-                                        <p>{getAttendanceComment(profile.attendance)}</p>
                                     </div>
 
                                     {/* Core Table */}
-                                    <div className="overflow-hidden border border-slate-200 rounded-2xl">
-                                        <table className="w-full text-left text-xs">
-                                            <thead className="bg-emerald-900 text-white">
+                                    <div className="overflow-hidden border border-slate-100 rounded-[1.5rem]">
+                                        <table className="w-full text-left">
+                                            <thead className="bg-emerald-950 text-white">
                                                 <tr>
-                                                    <th className="p-3 uppercase tracking-widest font-black text-[9px]">Subject</th>
-                                                    <th className="p-3 text-center uppercase tracking-widest font-black text-[9px]">Judgement</th>
-                                                    <th className="p-3 text-right uppercase tracking-widest font-black text-[9px]">Standardised</th>
+                                                    <th className="p-4 uppercase tracking-[0.2em] font-black text-[9px]">Subject Area</th>
+                                                    <th className="p-4 text-center uppercase tracking-[0.2em] font-black text-[9px]">Judgement</th>
+                                                    <th className="p-4 text-right uppercase tracking-[0.2em] font-black text-[9px]">Std. Metric</th>
                                                 </tr>
                                             </thead>
-                                            <tbody className="divide-y divide-slate-100 font-medium">
-                                                {['Reading', 'Writing', 'Maths', 'Science'].map(sub => (
-                                                    <tr key={sub}>
-                                                        <td className="p-3 text-slate-800 font-bold">{sub}</td>
-                                                        <td className="p-3 text-center"><GradeBadge grade={judgments[sub.toLowerCase()]} /></td>
-                                                        <td className="p-3 text-right text-slate-500 font-semibold">
-                                                            {sub === 'Reading' ? (profile.yearGroup === '6' ? `SAT: ${profile.satsReading || '-'}` : (profile.nferReading ? `NFER: ${profile.nferReading}` : '-')) :
-                                                             sub === 'Maths' ? (profile.yearGroup === '6' ? `SAT: ${profile.satsMaths || '-'}` : (profile.nferMaths ? `NFER: ${profile.nferMaths}` : '-')) :
-                                                             sub === 'Writing' ? (profile.yearGroup === '6' ? `GPS: ${profile.satsGps || '-'}` : '-') : '-'}
+                                            <tbody className="divide-y divide-slate-100">
+                                                {['Reading', 'Writing', 'Maths', 'Science'].map(s => (
+                                                    <tr key={s}>
+                                                        <td className="p-4 text-slate-900 font-black text-[11px] uppercase tracking-wider">{s}</td>
+                                                        <td className="p-4 text-center"><GradeBadge grade={judgments[s.toLowerCase()]} /></td>
+                                                        <td className="p-4 text-right text-slate-400 font-black text-[10px]">
+                                                            {s === 'Reading' ? (profile.yearGroup === '6' ? `SAT: ${profile.satsReading || 'N/A'}` : (profile.nferReading ? `NFER: ${profile.nferReading}` : 'Assessed')) :
+                                                             s === 'Maths' ? (profile.yearGroup === '6' ? `SAT: ${profile.satsMaths || 'N/A'}` : (profile.nferMaths ? `NFER: ${profile.nferMaths}` : 'Assessed')) :
+                                                             s === 'Writing' ? (profile.yearGroup === '6' ? `GPS: ${profile.satsGps || 'N/A'}` : 'Internal') : 'Skill-based'}
                                                         </td>
                                                     </tr>
                                                 ))}
@@ -523,60 +474,49 @@
                                         </table>
                                     </div>
 
-                                    {/* CLIC Details */}
-                                    <div className="p-6 bg-slate-50 rounded-2xl border border-slate-200">
-                                        <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest mb-2">CLIC Progression</h3>
-                                        <p className="text-[11px] text-slate-700 leading-tight italic">
-                                            {currentClic?.summary || "Foundational Phase."}
-                                        </p>
-                                    </div>
-
-                                    {/* Foundation Summary */}
-                                    <div className="p-6 bg-emerald-50/20 border border-emerald-100 rounded-3xl">
-                                        <h3 className="text-xs font-black text-emerald-800 uppercase tracking-widest mb-4">Foundation Curriculum Summary</h3>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                            {getActiveSubjects().map(sub => {
-                                                if (rubricState[sub.id] === undefined) return null;
-                                                return (
-                                                    <div key={sub.id} className="p-2 bg-white rounded-lg border border-emerald-100 flex justify-between items-center text-[10px] shadow-sm">
-                                                        <span className="font-bold text-slate-700">{sub.name}</span>
-                                                        <span className="font-black text-emerald-700 uppercase">{['Emerging', 'Developing', 'Secure'][rubricState[sub.id]]}</span>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-
-                                    {/* AI Commentary */}
-                                    <div className="relative">
-                                        <h3 className="text-2xl font-serif italic text-emerald-900 mb-2 border-b-2 border-emerald-100 pb-2">Holistic Summative Commentary</h3>
-                                        <div className="p-8 bg-slate-50 rounded-2xl border border-slate-200 min-h-[220px] relative shadow-inner">
-                                            {isGenerating && (
-                                                <div className="absolute inset-0 bg-white/90 backdrop-blur-sm flex items-center justify-center z-10 rounded-2xl">
-                                                    <div className="animate-spin rounded-full h-10 w-10 border-4 border-emerald-600 border-t-transparent"></div>
+                                    {/* Foundation Highlights */}
+                                    <div className="bg-slate-50 p-10 rounded-[2rem] border border-slate-100">
+                                        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-8 text-center">Foundation Curriculum Performance</h3>
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                            {getActiveSubjects().map(sub => (
+                                                <div key={sub.id} className="p-4 bg-white border border-slate-100 rounded-2xl flex flex-col items-center justify-center gap-1 shadow-sm">
+                                                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter text-center">{sub.name}</span>
+                                                    <span className={`text-[10px] font-black uppercase tracking-widest ${rubricState[sub.id] === 2 ? 'text-emerald-700' : 'text-slate-700'}`}>
+                                                        {rubricState[sub.id] !== undefined ? ['Emerging', 'Developing', 'Secure'][rubricState[sub.id]] : '-'}
+                                                    </span>
                                                 </div>
-                                            )}
-                                            {errorMsg ? (
-                                                <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-mono">{errorMsg}</div>
-                                            ) : (
-                                                <p contentEditable="true" className={`text-slate-700 leading-relaxed text-[14px] whitespace-pre-wrap italic ${!aiCommentary ? 'opacity-40' : ''}`}>
-                                                    {aiCommentary || "Data entry required to synthesise report commentary. Fill in pupil data to begin."}
-                                                </p>
-                                            )}
+                                            ))}
                                         </div>
                                     </div>
-                                </div>
 
-                                <div className="p-10 border-t border-slate-100 flex flex-col md:flex-row justify-between items-end mt-auto bg-slate-50/50 italic text-slate-400 uppercase font-black text-[9px]">
-                                    <div className="w-full md:w-48 border-t border-slate-300 pt-2 tracking-widest">Class Teacher Signature</div>
-                                    <div className="w-full md:w-48 border-t border-slate-300 pt-2 tracking-widest text-right mt-6 md:mt-0">Headteacher Signature</div>
+                                    {/* Commentary */}
+                                    <div>
+                                        <h3 className="text-3xl font-serif italic font-black text-emerald-950 mb-6 border-b-2 border-emerald-50 pb-4">Summative Commentary</h3>
+                                        <div className="p-10 bg-slate-50 rounded-[2rem] border border-slate-100 min-h-[300px]">
+                                            <div contentEditable="true" onBlur={(e) => setAiCommentary(e.target.innerText)} className={`text-slate-800 leading-relaxed text-lg font-medium whitespace-pre-wrap italic outline-none ${!aiCommentary ? 'opacity-30' : ''}`}>
+                                                {aiCommentary || "Please complete profile data to synthesise the narrative report."}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                        <div className="p-8 bg-emerald-950 text-white rounded-[2rem]">
+                                            <h4 className="text-[9px] font-black uppercase tracking-[0.2em] mb-4 text-emerald-400">CLIC Focus</h4>
+                                            <p className="text-sm italic opacity-90 leading-relaxed">"{currentClic?.summary || "Foundational numeric milestones."}"</p>
+                                        </div>
+                                        <div className="p-8 bg-slate-50 border border-slate-100 rounded-[2rem]">
+                                            <h4 className="text-[9px] font-black uppercase tracking-[0.2em] mb-4 text-slate-400">Attendance Context</h4>
+                                            <p className="text-sm italic text-slate-700 leading-relaxed">{getAttendanceComment(profile.attendance)}</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="pt-12 border-t-2 border-slate-50 flex flex-col md:flex-row justify-between items-end font-black text-[9px] uppercase tracking-[0.3em] text-slate-300">
+                                        <div className="w-full md:w-64 border-t-2 border-slate-200 pt-3">Class Teacher</div>
+                                        <div className="w-full md:w-64 border-t-2 border-slate-200 pt-3 text-right mt-8 md:mt-0">Headteacher</div>
+                                    </div>
                                 </div>
                             </div>
                         </main>
-                    </div>
-
-                    <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-6 py-3 rounded-full text-sm font-medium shadow-2xl transition-all duration-300 z-50 ${toast.show ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
-                        {toast.message}
                     </div>
                 </div>
             );

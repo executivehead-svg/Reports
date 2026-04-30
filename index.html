@@ -188,7 +188,7 @@
             const generateAICommentary = async () => {
                 if (!profile.name) return showToast("Pupil Name required", "error");
                 if (!userApiKey) {
-                    showToast("Missing API Key", "error");
+                    showToast("API Key required", "error");
                     setShowSettings(true);
                     return;
                 }
@@ -202,45 +202,58 @@
                     .map(s => `${s.name}: ${['Emerging', 'Developing', 'Secure'][rubricState[s.id]]}`)
                     .join(', ');
 
-                const prompt = `You are a Primary Teacher at Taddington & Priestcliffe C of E Federation.
-                MISSION: Flourishing together.
-                Write a professional, encouraging summative teacher report for ${profile.name} (Year ${profile.yearGroup}).
-                ATTITUDE: Level ${a2lLevel}/10 (${A2L_PATHWAY[a2lLevel]?.behaviour}).
-                CORE ATTAINMENT: Reading (${judgments.reading}), Writing (${judgments.writing}), Maths (${judgments.maths}), Science (${judgments.science}).
-                FOUNDATION SUBJECTS: ${formattedRubric || "Broadly meeting expectations"}.
-                LENGTH: Approximately 200 words. Focus on the theme of "flourishing".`;
+                const prompt = `You are an experienced Primary School Teacher. 
+                Write a professional, warm, summative end-of-year report for ${profile.name} (Year ${profile.yearGroup}).
+                The school vision is "Flourishing Together".
+                ATTITUDE: Engagement Level ${a2lLevel}/10 (${A2L_PATHWAY[a2lLevel]?.behaviour}).
+                ACADEMICS: Reading (${judgments.reading}), Writing (${judgments.writing}), Maths (${judgments.maths}), Science (${judgments.science}).
+                FOUNDATION: ${formattedRubric || "Meeting expectations across all areas"}.
+                LENGTH: Approx 200 words. Tone: Professional British English, third person.`;
 
-                // Waterfall model strategy: Try different model names until one works.
-                const modelsToTry = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-flash-001"];
-                let lastError = "";
+                // ADVANCED FALLBACK ENGINE
+                // We cycle through combinations of API versions and Model IDs
+                const requestPermutations = [
+                    { ver: 'v1beta', model: 'gemini-1.5-flash' },
+                    { ver: 'v1', model: 'gemini-1.5-flash' },
+                    { ver: 'v1beta', model: 'gemini-pro' }
+                ];
 
-                for (const model of modelsToTry) {
+                let successfulText = null;
+                let errorLog = [];
+
+                for (const attempt of requestPermutations) {
                     try {
-                        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${userApiKey}`;
+                        const url = `https://generativelanguage.googleapis.com/${attempt.ver}/models/${attempt.model}:generateContent?key=${userApiKey}`;
                         const response = await fetch(url, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                            body: JSON.stringify({
+                                contents: [{ parts: [{ text: prompt }] }],
+                                generationConfig: { temperature: 0.7, topP: 0.8, topK: 40 }
+                            })
                         });
 
                         const data = await response.json();
                         
                         if (response.ok && data.candidates?.[0]?.content?.parts?.[0]?.text) {
-                            setAiCommentary(data.candidates[0].content.parts[0].text);
-                            showToast("Report Synthesised!", "success");
-                            setIsGenerating(false);
-                            return; // Success!
+                            successfulText = data.candidates[0].content.parts[0].text;
+                            break; // Exit loop on success
                         } else {
-                            lastError = data.error?.message || `Model ${model} failed.`;
+                            const msg = data.error?.message || "Unknown error";
+                            errorLog.push(`[${attempt.ver}/${attempt.model}]: ${msg}`);
                         }
                     } catch (e) {
-                        lastError = e.message;
+                        errorLog.push(`[${attempt.ver}/${attempt.model}]: Connection failed`);
                     }
                 }
 
-                // If we get here, all models failed
-                setAiCommentary(`[SYNTHESIS ERROR]: ${lastError}\n\nTroubleshooting:\n1. Check your internet connection.\n2. Ensure your API Key is correct and has access to Gemini in Google AI Studio.\n3. If you just updated code on GitHub, refresh (Ctrl+F5) to clear cache.`);
-                showToast("Synthesis failed", "error");
+                if (successfulText) {
+                    setAiCommentary(successfulText);
+                    showToast("Synthesis successful!", "success");
+                } else {
+                    setAiCommentary(`[SYNTHESIS CRITICAL FAILURE]\n\nAll attempts to reach Google Gemini failed for this API Key.\n\n${errorLog.join('\n')}\n\nREMEDY:\n1. Open Google AI Studio (aistudio.google.com).\n2. Create a NEW API Key.\n3. Paste it here in Settings and try again.`);
+                    showToast("Synthesis failed", "error");
+                }
                 setIsGenerating(false);
             };
 
@@ -315,6 +328,20 @@
 
                     <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
                         <aside className="lg:col-span-4 space-y-6 no-print max-h-[85vh] overflow-y-auto pr-2 custom-scrollbar">
+                            {savedReports.length > 0 && (
+                                <div className="bg-emerald-50 p-6 rounded-[1.5rem] border border-emerald-100">
+                                    <h2 className="text-[10px] font-black text-emerald-800 uppercase mb-4 tracking-[0.2em] flex items-center gap-2"><Icon name="cloud" size={12}/> Cloud Library</h2>
+                                    <div className="space-y-2">
+                                        {savedReports.map(r => (
+                                            <div key={r.id} onClick={() => loadReport(r)} className="flex items-center justify-between bg-white p-3 rounded-xl border border-emerald-100 shadow-sm hover:shadow-md transition cursor-pointer">
+                                                <span className="text-xs font-black text-emerald-950 uppercase">{r.profile.name}</span>
+                                                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Y{r.profile.yearGroup}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="bg-white p-6 rounded-[1.5rem] border border-slate-200 shadow-sm">
                                 <h2 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-[0.2em] flex items-center gap-2"><Icon name="user" size={12}/> Pupil Identity</h2>
                                 <div className="space-y-4">
@@ -344,14 +371,14 @@
 
                                     {profile.yearGroup === '6' ? (
                                         <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100 grid grid-cols-3 gap-2">
-                                            <input type="number" placeholder="Read" value={profile.satsReading} onChange={(e) => setProfile(p => ({...p, satsReading: e.target.value}))} className="p-2 text-xs border border-emerald-100 rounded bg-white font-bold" />
-                                            <input type="number" placeholder="GPS" value={profile.satsGps} onChange={(e) => setProfile(p => ({...p, satsGps: e.target.value}))} className="p-2 text-xs border border-emerald-100 rounded bg-white font-bold" />
-                                            <input type="number" placeholder="Math" value={profile.satsMaths} onChange={(e) => setProfile(p => ({...p, satsMaths: e.target.value}))} className="p-2 text-xs border border-emerald-100 rounded bg-white font-bold" />
+                                            <input type="number" placeholder="Read" value={profile.satsReading} onChange={(e) => setProfile(p => ({...p, satsReading: e.target.value}))} className="p-2 text-xs border border-emerald-100 rounded bg-white font-bold text-center" />
+                                            <input type="number" placeholder="GPS" value={profile.satsGps} onChange={(e) => setProfile(p => ({...p, satsGps: e.target.value}))} className="p-2 text-xs border border-emerald-100 rounded bg-white font-bold text-center" />
+                                            <input type="number" placeholder="Math" value={profile.satsMaths} onChange={(e) => setProfile(p => ({...p, satsMaths: e.target.value}))} className="p-2 text-xs border border-emerald-100 rounded bg-white font-bold text-center" />
                                         </div>
                                     ) : ['2','3','4','5'].includes(profile.yearGroup) ? (
                                         <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 grid grid-cols-2 gap-2">
-                                            <input type="number" placeholder="NFER Read" value={profile.nferReading} onChange={(e) => setProfile(p => ({...p, nferReading: e.target.value}))} className="p-2 text-xs border border-slate-200 rounded bg-white font-bold" />
-                                            <input type="number" placeholder="NFER Math" value={profile.nferMaths} onChange={(e) => setProfile(p => ({...p, nferMaths: e.target.value}))} className="p-2 text-xs border border-slate-200 rounded bg-white font-bold" />
+                                            <input type="number" placeholder="NFER Read" value={profile.nferReading} onChange={(e) => setProfile(p => ({...p, nferReading: e.target.value}))} className="p-2 text-xs border border-slate-200 rounded bg-white font-bold text-center" />
+                                            <input type="number" placeholder="NFER Math" value={profile.nferMaths} onChange={(e) => setProfile(p => ({...p, nferMaths: e.target.value}))} className="p-2 text-xs border border-slate-200 rounded bg-white font-bold text-center" />
                                         </div>
                                     ) : null}
                                 </div>
@@ -374,7 +401,7 @@
                             </div>
 
                             <div className="bg-white p-6 rounded-[1.5rem] border border-slate-200 shadow-sm">
-                                <h2 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-[0.2em] flex items-center gap-2"><Icon name="list" size={12}/> Foundation Subjects</h2>
+                                <h2 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-[0.2em] flex items-center gap-2"><Icon name="list" size={12}/> Foundation Curriculum</h2>
                                 <div className="space-y-3">
                                     {getActiveSubjects().map(sub => (
                                         <div key={sub.id} className="p-3 bg-slate-50 rounded-xl border border-slate-100">

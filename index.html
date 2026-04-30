@@ -185,7 +185,7 @@
                 }
 
                 setIsGenerating(true);
-                setAiCommentary(""); // Clear previous
+                setAiCommentary(""); 
 
                 const activeSubs = getActiveSubjects();
                 const formattedRubric = activeSubs
@@ -202,7 +202,8 @@
                 LENGTH: Approximately 200 words. Focus on the theme of "flourishing".`;
 
                 try {
-                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${userApiKey}`, {
+                    // Switched to gemini-1.5-flash for maximum compatibility with public API keys
+                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${userApiKey}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -228,7 +229,7 @@
 
                 } catch (e) {
                     console.error("AI Error:", e.message);
-                    setAiCommentary(`Error generating report: ${e.message}. Please check your API Key and connection.`);
+                    setAiCommentary(`Error generating report: ${e.message}. Ensure your API key is valid and has Gemini 1.5 Flash access.`);
                     showToast("Synthesis failed", "error");
                 } finally {
                     setIsGenerating(false);
@@ -321,10 +322,7 @@
                     </header>
 
                     <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-                        {/* INPUT PANEL */}
                         <aside className="lg:col-span-4 space-y-6 no-print max-h-[85vh] overflow-y-auto pr-2 custom-scrollbar">
-                            
-                            {/* Section 1: Identity */}
                             <div className="bg-white p-6 rounded-[1.5rem] border border-slate-200 shadow-sm">
                                 <h2 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-[0.2em] flex items-center gap-2"><Icon name="user" size={12}/> Pupil Identity</h2>
                                 <div className="space-y-4">
@@ -347,7 +345,6 @@
                                 </div>
                             </div>
 
-                            {/* Section 2: Core Data */}
                             <div className="bg-white p-6 rounded-[1.5rem] border border-slate-200 shadow-sm">
                                 <h2 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-[0.2em] flex items-center gap-2"><Icon name="calculator" size={12}/> Benchmarks</h2>
                                 <div className="space-y-4">
@@ -362,7 +359,6 @@
                                         </div>
                                     </div>
 
-                                    {/* Standardised Logic */}
                                     {profile.yearGroup === '6' ? (
                                         <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
                                             <label className="text-[8px] font-black text-emerald-800 uppercase tracking-widest mb-3 block">Year 6 SATs Scores</label>
@@ -390,7 +386,6 @@
                                 </div>
                             </div>
 
-                            {/* Section 3: Core Judgments */}
                             <div className="bg-white p-6 rounded-[1.5rem] border border-slate-200 shadow-sm">
                                 <h2 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-[0.2em] flex items-center gap-2"><Icon name="award" size={12}/> Core Teacher Judgments</h2>
                                 <div className="space-y-2">
@@ -407,7 +402,6 @@
                                 </div>
                             </div>
 
-                            {/* Section 4: Foundation Subjects */}
                             <div className="bg-white p-6 rounded-[1.5rem] border border-slate-200 shadow-sm">
                                 <h2 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-[0.2em] flex items-center gap-2"><Icon name="list" size={12}/> Foundation Curriculum</h2>
                                 <div className="space-y-3">
@@ -430,7 +424,6 @@
                                 </div>
                             </div>
 
-                            {/* Section 5: A2L */}
                             <div className="bg-white p-6 rounded-[1.5rem] border border-slate-200 shadow-sm">
                                 <h2 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-[0.2em] flex items-center gap-2"><Icon name="trending-up" size={12}/> A2L Engagement</h2>
                                 <div className="grid grid-cols-5 gap-1.5">
@@ -445,7 +438,6 @@
                             </button>
                         </aside>
 
-                        {/* PREVIEW PANEL */}
                         <main className="lg:col-span-8">
                             <div ref={reportRef} id="reportCard" className="bg-white rounded-[2rem] border border-slate-200 overflow-hidden min-h-full report-shadow flex flex-col">
                                 <div className="bg-emerald-950 text-white p-12 relative">
@@ -466,7 +458,6 @@
                                 </div>
 
                                 <div className="p-12 space-y-12">
-                                    {/* Tiles */}
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                                         <div className="p-6 bg-slate-50 rounded-[1.5rem] text-center border border-slate-100">
                                             <p className="text-[8px] text-slate-400 uppercase font-black tracking-widest mb-2">A2L Grade</p>
@@ -486,7 +477,6 @@
                                         </div>
                                     </div>
 
-                                    {/* Core Table */}
                                     <div className="overflow-hidden border border-slate-100 rounded-[1.5rem]">
                                         <table className="w-full text-left">
                                             <thead className="bg-emerald-950 text-white">
@@ -512,7 +502,6 @@
                                         </table>
                                     </div>
 
-                                    {/* Foundation Highlights */}
                                     <div className="bg-slate-50 p-10 rounded-[2rem] border border-slate-100">
                                         <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-8 text-center">Foundation Curriculum Performance</h3>
                                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -527,7 +516,6 @@
                                         </div>
                                     </div>
 
-                                    {/* Commentary */}
                                     <div>
                                         <h3 className="text-3xl font-serif italic font-black text-emerald-950 mb-6 border-b-2 border-emerald-50 pb-4">Summative Commentary</h3>
                                         <div className="p-10 bg-slate-50 rounded-[2rem] border border-slate-100 min-h-[300px]">

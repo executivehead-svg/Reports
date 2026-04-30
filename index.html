@@ -89,8 +89,15 @@
             ]
         };
 
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'report-genius-v1';
+        // --- Deployment Helpers ---
+        // On GitHub, these won't be defined. We'll handle them gracefully.
+        const safeFirebaseConfig = () => {
+            try {
+                return JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : 'null');
+            } catch(e) { return null; }
+        };
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'tp-report-genius-external';
 
         // --- Components ---
         const Icon = ({ name, size = 18, className = "" }) => {
@@ -133,23 +140,32 @@
             const reportRef = useRef(null);
 
             useEffect(() => {
-                if (!firebaseConfig.apiKey || !window.firebase) return;
-                const fbApp = firebase.initializeApp(firebaseConfig);
-                const firestore = fbApp.firestore();
-                const firebaseAuth = fbApp.auth();
-                setDb(firestore);
-                firebaseAuth.onAuthStateChanged((u) => {
-                    setUser(u);
-                    if (u) {
-                        const savedKey = localStorage.getItem('tp_report_genius_key');
-                        if (savedKey) setUserApiKey(savedKey);
-                        const initAuth = async () => {
-                            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await firebaseAuth.signInWithCustomToken(__initial_auth_token);
-                            else await firebaseAuth.signInAnonymously();
-                        };
-                        initAuth();
-                    }
-                });
+                const savedKey = localStorage.getItem('tp_report_genius_key');
+                if (savedKey) setUserApiKey(savedKey);
+
+                const config = safeFirebaseConfig();
+                if (!config || !window.firebase) {
+                    console.log("Firebase not configured for this environment. Cloud saving disabled.");
+                    return;
+                }
+                
+                try {
+                    const fbApp = firebase.initializeApp(config);
+                    const firestore = fbApp.firestore();
+                    const firebaseAuth = fbApp.auth();
+                    setDb(firestore);
+                    
+                    firebaseAuth.onAuthStateChanged((u) => {
+                        setUser(u);
+                        if (!u) {
+                            const initAuth = async () => {
+                                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await firebaseAuth.signInWithCustomToken(__initial_auth_token);
+                                else await firebaseAuth.signInAnonymously();
+                            };
+                            initAuth();
+                        }
+                    });
+                } catch (e) { console.error("Firebase init failed", e); }
             }, []);
 
             useEffect(() => {
@@ -164,7 +180,10 @@
             };
 
             const saveToCloud = async () => {
-                if (!user || !db || !profile.name) return showToast(profile.name ? "Saving..." : "Pupil Name required", "error");
+                if (!db) return showToast("Cloud storage not configured", "error");
+                if (!user) return showToast("Authenticating...", "info");
+                if (!profile.name) return showToast("Pupil Name required", "error");
+
                 setIsSaving(true);
                 try {
                     const docId = profile.name.replace(/\s+/g, '-').toLowerCase();
@@ -179,7 +198,7 @@
             const generateAICommentary = async () => {
                 if (!profile.name) return showToast("Pupil Name required", "error");
                 if (!userApiKey) {
-                    showToast("API Key missing in Settings", "error");
+                    showToast("Please enter Gemini API Key in Settings", "error");
                     setShowSettings(true);
                     return;
                 }
@@ -202,34 +221,23 @@
                 LENGTH: Approximately 200 words. Focus on the theme of "flourishing".`;
 
                 try {
-                    // CRITICAL FIX: Switched to gemini-1.5-flash for compatibility with standard API Keys on GitHub
                     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${userApiKey}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            contents: [{ parts: [{ text: prompt }] }]
-                        })
+                        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
                     });
 
                     const data = await res.json();
+                    if (!res.ok) throw new Error(data.error?.message || "Synthesis error");
 
-                    if (!res.ok) {
-                        const errorMsg = data.error?.message || "Connection error";
-                        throw new Error(errorMsg);
-                    }
-
-                    const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                    
-                    if (generatedText) {
-                        setAiCommentary(generatedText);
+                    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if (text) {
+                        setAiCommentary(text);
                         showToast("Report Synthesised!", "success");
-                    } else {
-                        throw new Error("No text returned from AI.");
-                    }
+                    } else throw new Error("Empty response");
 
                 } catch (e) {
-                    console.error("AI Error:", e.message);
-                    setAiCommentary(`Error generating report: ${e.message}. Ensure your API key is valid for Gemini 1.5 Flash.`);
+                    setAiCommentary(`Error: ${e.message}. Ensure your API key is valid.`);
                     showToast("Synthesis failed", "error");
                 } finally {
                     setIsGenerating(false);
@@ -241,31 +249,15 @@
                 showToast("Building Borderless PDF...");
                 
                 try {
-                    const canvas = await html2canvas(reportRef.current, { 
-                        scale: 2, 
-                        useCORS: true, 
-                        backgroundColor: '#ffffff',
-                        logging: false
-                    });
-                    
+                    const canvas = await html2canvas(reportRef.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
                     const imgData = canvas.toDataURL('image/png');
                     const pdfWidthMM = 210; 
                     const pdfHeightMM = (canvas.height * pdfWidthMM) / canvas.width; 
-                    
-                    const pdf = new jspdf.jsPDF({
-                        orientation: 'p',
-                        unit: 'mm',
-                        format: [pdfWidthMM, pdfHeightMM],
-                        compress: true
-                    });
-
+                    const pdf = new jspdf.jsPDF({ orientation: 'p', unit: 'mm', format: [pdfWidthMM, pdfHeightMM], compress: true });
                     pdf.addImage(imgData, 'PNG', 0, 0, pdfWidthMM, pdfHeightMM, undefined, 'FAST');
                     pdf.save(`${profile.name || 'Student'}_Report.pdf`);
                     showToast("Export complete!", "success");
-                } catch (err) {
-                    console.error("PDF error:", err);
-                    showToast("Export failed", "error");
-                }
+                } catch (err) { showToast("Export failed", "error"); }
             };
 
             const getActiveSubjects = () => {
@@ -295,12 +287,13 @@
                     {showSettings && (
                         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
                             <div className="bg-white rounded-[2rem] p-8 max-w-md w-full shadow-2xl">
-                                <h2 className="text-xl font-black mb-6 uppercase tracking-tight">Configuration</h2>
+                                <h2 className="text-xl font-black mb-4 uppercase tracking-tight">Configuration</h2>
+                                <p className="text-xs text-slate-500 mb-6 leading-relaxed">Teachers must enter their Google AI Studio API Key to enable the synthesis engine. Cloud storage is environment-dependent.</p>
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Gemini API Key</label>
-                                <input type="password" value={userApiKey} onChange={(e) => setUserApiKey(e.target.value)} placeholder="Paste Key Here..." className="w-full border border-slate-200 rounded-xl p-3 text-sm mb-8" />
+                                <input type="password" value={userApiKey} onChange={(e) => setUserApiKey(e.target.value)} placeholder="Paste AI Key Here..." className="w-full border border-slate-200 rounded-xl p-3 text-sm mb-8" />
                                 <div className="flex gap-4">
-                                    <button onClick={() => { localStorage.setItem('tp_report_genius_key', userApiKey); setShowSettings(false); }} className="flex-1 bg-emerald-950 text-white font-bold py-4 rounded-xl uppercase tracking-widest text-xs">Save</button>
-                                    <button onClick={() => setShowSettings(false)} className="px-6 text-slate-400 font-bold uppercase tracking-widest text-xs">Cancel</button>
+                                    <button onClick={() => { localStorage.setItem('tp_report_genius_key', userApiKey); setShowSettings(false); showToast("Settings Saved", "success"); }} className="flex-1 bg-emerald-950 text-white font-bold py-4 rounded-xl uppercase tracking-widest text-xs">Save Settings</button>
+                                    <button onClick={() => setShowSettings(false)} className="px-6 text-slate-400 font-bold uppercase tracking-widest text-xs">Close</button>
                                 </div>
                             </div>
                         </div>
@@ -316,13 +309,27 @@
                         </div>
                         <div className="flex flex-wrap gap-2">
                             <button onClick={() => setShowSettings(true)} className="px-4 py-2 bg-white border border-slate-200 rounded-lg flex items-center gap-2 font-black text-[10px] uppercase tracking-widest"><Icon name="settings" size={14}/> Settings</button>
-                            <button onClick={saveToCloud} className="px-4 py-2 bg-white border border-slate-200 rounded-lg flex items-center gap-2 font-black text-[10px] uppercase tracking-widest text-emerald-700"><Icon name="save" size={14}/> Cloud</button>
+                            {db && <button onClick={saveToCloud} className="px-4 py-2 bg-white border border-slate-200 rounded-lg flex items-center gap-2 font-black text-[10px] uppercase tracking-widest text-emerald-700"><Icon name="save" size={14}/> Save Cloud</button>}
                             <button onClick={downloadAsPDF} className="bg-emerald-950 text-white px-5 py-2 rounded-lg flex items-center gap-2 font-black text-[10px] uppercase tracking-widest shadow-lg hover:bg-black transition"><Icon name="download" size={14}/> Export PDF</button>
                         </div>
                     </header>
 
                     <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
                         <aside className="lg:col-span-4 space-y-6 no-print max-h-[85vh] overflow-y-auto pr-2 custom-scrollbar">
+                            {savedReports.length > 0 && (
+                                <div className="bg-emerald-50 p-6 rounded-[1.5rem] border border-emerald-100">
+                                    <h2 className="text-[10px] font-black text-emerald-800 uppercase mb-4 tracking-[0.2em] flex items-center gap-2"><Icon name="cloud" size={12}/> Cloud Library</h2>
+                                    <div className="space-y-2">
+                                        {savedReports.map(r => (
+                                            <div key={r.id} onClick={() => loadReport(r)} className="flex items-center justify-between bg-white p-3 rounded-xl border border-emerald-100 shadow-sm hover:shadow-md transition cursor-pointer">
+                                                <span className="text-xs font-black text-emerald-950 uppercase">{r.profile.name}</span>
+                                                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Y{r.profile.yearGroup}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="bg-white p-6 rounded-[1.5rem] border border-slate-200 shadow-sm">
                                 <h2 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-[0.2em] flex items-center gap-2"><Icon name="user" size={12}/> Pupil Identity</h2>
                                 <div className="space-y-4">

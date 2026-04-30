@@ -210,40 +210,38 @@
                 FOUNDATION SUBJECTS: ${formattedRubric || "Broadly meeting expectations"}.
                 LENGTH: Approximately 200 words. Focus on the theme of "flourishing".`;
 
-                try {
-                    // VERSION FIX: Using v1beta and explicit model path for Gemini 1.5 Flash
-                    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${userApiKey}`;
-                    
-                    const response = await fetch(url, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            contents: [{ parts: [{ text: prompt }] }]
-                        })
-                    });
+                // Waterfall model strategy: Try different model names until one works.
+                const modelsToTry = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-flash-001"];
+                let lastError = "";
 
-                    const data = await response.json();
-                    
-                    if (!response.ok) {
-                        const errorMsg = data.error?.message || `Status: ${response.status}`;
-                        throw new Error(`${errorMsg} (URL: ${url})`);
+                for (const model of modelsToTry) {
+                    try {
+                        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${userApiKey}`;
+                        const response = await fetch(url, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                        });
+
+                        const data = await response.json();
+                        
+                        if (response.ok && data.candidates?.[0]?.content?.parts?.[0]?.text) {
+                            setAiCommentary(data.candidates[0].content.parts[0].text);
+                            showToast("Report Synthesised!", "success");
+                            setIsGenerating(false);
+                            return; // Success!
+                        } else {
+                            lastError = data.error?.message || `Model ${model} failed.`;
+                        }
+                    } catch (e) {
+                        lastError = e.message;
                     }
-
-                    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                    if (text) {
-                        setAiCommentary(text);
-                        showToast("Report Synthesised!", "success");
-                    } else {
-                        throw new Error("The API responded successfully but returned no content. This usually happens if safety filters are triggered.");
-                    }
-
-                } catch (e) {
-                    console.error("AI Error:", e);
-                    setAiCommentary(`[SYNTHESIS ERROR]: ${e.message}\n\nTroubleshooting:\n1. Ensure you have copied the correct API Key from Google AI Studio.\n2. Verify you are using 'Gemini 1.5 Flash' in your AI Studio tier.\n3. If you just updated the code on GitHub, wait 2 minutes and refresh (Shift+F5) to clear cache.`);
-                    showToast("Synthesis failed", "error");
-                } finally {
-                    setIsGenerating(false);
                 }
+
+                // If we get here, all models failed
+                setAiCommentary(`[SYNTHESIS ERROR]: ${lastError}\n\nTroubleshooting:\n1. Check your internet connection.\n2. Ensure your API Key is correct and has access to Gemini in Google AI Studio.\n3. If you just updated code on GitHub, refresh (Ctrl+F5) to clear cache.`);
+                showToast("Synthesis failed", "error");
+                setIsGenerating(false);
             };
 
             const downloadAsPDF = async () => {

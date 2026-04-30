@@ -178,19 +178,61 @@
 
             const generateAICommentary = async () => {
                 if (!profile.name) return showToast("Pupil Name required", "error");
+                if (!userApiKey) {
+                    showToast("API Key missing in Settings", "error");
+                    setShowSettings(true);
+                    return;
+                }
+
                 setIsGenerating(true);
+                setAiCommentary(""); // Clear previous
+
                 const activeSubs = getActiveSubjects();
-                const formattedRubric = activeSubs.filter(s => rubricState[s.id] !== undefined).map(s => `${s.name}: ${['Emerging', 'Developing', 'Secure'][rubricState[s.id]]}`).join(', ');
-                const prompt = `Teacher report for ${profile.name}, Year ${profile.yearGroup}. A2L: ${a2lLevel}. Core: R:${judgments.reading}, W:${judgments.writing}, M:${judgments.maths}. Foundation: ${formattedRubric}. Flourishing-themed summative report, 200 words.`;
+                const formattedRubric = activeSubs
+                    .filter(s => rubricState[s.id] !== undefined)
+                    .map(s => `${s.name}: ${['Emerging', 'Developing', 'Secure'][rubricState[s.id]]}`)
+                    .join(', ');
+
+                const prompt = `You are a Primary Teacher at Taddington & Priestcliffe C of E Federation.
+                MISSION: Flourishing together.
+                Write a professional, encouraging summative teacher report for ${profile.name} (Year ${profile.yearGroup}).
+                ATTITUDE: Level ${a2lLevel}/10 (${A2L_PATHWAY[a2lLevel]?.behaviour}).
+                CORE ATTAINMENT: Reading (${judgments.reading}), Writing (${judgments.writing}), Maths (${judgments.maths}), Science (${judgments.science}).
+                FOUNDATION SUBJECTS: ${formattedRubric || "Broadly meeting expectations"}.
+                LENGTH: Approximately 200 words. Focus on the theme of "flourishing".`;
+
                 try {
                     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${userApiKey}`, {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: prompt }] }]
+                        })
                     });
+
                     const data = await res.json();
-                    setAiCommentary(data.candidates?.[0]?.content?.parts?.[0]?.text || "Synthesis error.");
-                } catch (e) { showToast("AI Failed", "error"); }
-                setIsGenerating(false);
+
+                    if (!res.ok) {
+                        const errorMsg = data.error?.message || "Connection error";
+                        throw new Error(errorMsg);
+                    }
+
+                    const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                    
+                    if (generatedText) {
+                        setAiCommentary(generatedText);
+                        showToast("Report Synthesised!", "success");
+                    } else {
+                        throw new Error("No text returned. Check safety filters.");
+                    }
+
+                } catch (e) {
+                    console.error("AI Error:", e.message);
+                    setAiCommentary(`Error generating report: ${e.message}. Please check your API Key and connection.`);
+                    showToast("Synthesis failed", "error");
+                } finally {
+                    setIsGenerating(false);
+                }
             };
 
             const downloadAsPDF = async () => {
@@ -198,7 +240,6 @@
                 showToast("Building Borderless PDF...");
                 
                 try {
-                    // Capture the report card element
                     const canvas = await html2canvas(reportRef.current, { 
                         scale: 2, 
                         useCORS: true, 
@@ -207,13 +248,9 @@
                     });
                     
                     const imgData = canvas.toDataURL('image/png');
-                    
-                    // Standard A4 width in mm
                     const pdfWidthMM = 210; 
-                    // Calculate relative height in mm to maintain aspect ratio exactly
                     const pdfHeightMM = (canvas.height * pdfWidthMM) / canvas.width; 
                     
-                    // Create PDF with exactly matching dimensions for borderless look
                     const pdf = new jspdf.jsPDF({
                         orientation: 'p',
                         unit: 'mm',
@@ -222,10 +259,10 @@
                     });
 
                     pdf.addImage(imgData, 'PNG', 0, 0, pdfWidthMM, pdfHeightMM, undefined, 'FAST');
-                    pdf.save(`${profile.name || 'Student'}_Report_Borderless.pdf`);
+                    pdf.save(`${profile.name || 'Student'}_Report.pdf`);
                     showToast("Export complete!", "success");
                 } catch (err) {
-                    console.error("PDF generation error:", err);
+                    console.error("PDF error:", err);
                     showToast("Export failed", "error");
                 }
             };
@@ -238,10 +275,11 @@
             };
 
             const getAttendanceComment = (val) => {
-                if (val >= 100) return "100%: Outstanding. This pupil maximizes every opportunity for academic and social success.";
-                if (val >= 97) return "97%: Strong attendance. Consistent presence supports steady progress.";
-                if (val >= 95) return "95%: Good attendance. Every day counts towards flourishing.";
-                if (val >= 90) return "90%: Persistent Absence. Approximately 4 school weeks missed; significant impact on learning.";
+                const num = parseFloat(val);
+                if (num >= 100) return "100%: Outstanding. This pupil maximizes every opportunity for academic and social success.";
+                if (num >= 97) return "97%: Strong attendance. Consistent presence supports steady progress.";
+                if (num >= 95) return "95%: Good attendance. Every day counts towards flourishing.";
+                if (num >= 90) return "90%: Persistent Absence. Approximately 4 school weeks missed; significant impact on learning.";
                 return "Significant learning time lost. Classified as Persistent Absence.";
             };
 
